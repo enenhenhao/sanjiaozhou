@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三角洲行动 - 保险箱破译训练</title>
+<style>
+  /* ======================================================================
+     SHARED: Reset, Variables, Base
+     ====================================================================== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-deep: #050a10;
+    --bg-panel: #0d1520;
+    --bg-sidebar: #090f18;
+    --border: #1a2a3a;
+    --border-glow: #1a6b8a;
+    --accent: #00d4aa;
+    --accent-dim: #007f6b;
+    --text: #c8d6e5;
+    --text-dim: #5e728a;
+    --text-bright: #e8f0f8;
+    --danger: #e0556a;
+    --success: #00e676;
+    --warning: #ffb74d;
+    --morse-glow: #4dd0e1;
+    --font-mono: 'Consolas', 'Courier New', 'Source Code Pro', monospace;
+    --font-ui: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  }
+
+  body {
+    background: radial-gradient(ellipse at 50% 30%, #0d1a24 0%, #080e14 60%, #050910 100%);
+    color: var(--text);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* scanline overlay */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.025) 2px, rgba(0,0,0,0.025) 4px);
+    pointer-events: none; z-index: 9999;
+  }
+
+  /* ======================================================================
+     SHARED: Layout shell (sidebar + main)
+     ====================================================================== */
+  .app-shell {
+    display: flex;
+    width: 100%;
+    max-width: 960px;
+    min-height: 600px;
+    gap: 0;
+    position: relative;
+  }
+
+  /* ======================================================================
+     SIDEBAR
+     ====================================================================== */
+  .sidebar {
+    width: 64px;
+    flex-shrink: 0;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 6px;
+    gap: 8px;
+    position: relative;
+    z-index: 5;
+    box-shadow: -2px 0 20px rgba(0,0,0,0.3);
+  }
+  .sidebar::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 20px; bottom: 20px;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, var(--border-glow), transparent);
+  }
+  .sidebar-label {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+    writing-mode: vertical-lr;
+    margin-bottom: 4px;
+  }
+  .sidebar-tab {
+    width: 50px; height: 50px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    transition: all 0.22s ease;
+    position: relative;
+  }
+  .sidebar-tab:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 10px rgba(0,210,170,0.15);
+  }
+  .sidebar-tab.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,210,170,0.08);
+    box-shadow: 0 0 14px rgba(0,210,170,0.25), inset 0 0 8px rgba(0,210,170,0.05);
+  }
+  .sidebar-divider {
+    width: 28px; height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
+
+  /* ======================================================================
+     MAIN PANEL
+     ====================================================================== */
+  .main-panel {
+    flex: 1;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 0 8px 8px 0;
+    padding: 24px 28px 20px;
+    position: relative;
+    box-shadow: 0 0 40px rgba(0,180,160,0.06), 0 0 80px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .main-panel::before,
+  .main-panel::after {
+    content: '';
+    position: absolute; width: 20px; height: 20px;
+    border-color: var(--border-glow); border-style: solid;
+    pointer-events: none; z-index: 1;
+  }
+  .main-panel::before { top: -1px; right: -1px; border-width: 2px 2px 0 0; border-radius: 0 4px 0 0; }
+  .main-panel::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
+
+  /* ======================================================================
+     SHARED: Section labels, progress bar, toast
+     ====================================================================== */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .section-label::before { content: '>'; color: var(--accent); font-weight: bold; }
+  .section-label .blink {
+    display: inline-block; width: 8px; height: 13px;
+    background: var(--accent);
+    animation: blink 1s step-end infinite; margin-left: 2px;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .progress-section { margin-top: 20px; position: relative; z-index: 2; }
+  .progress-label {
+    font-family: var(--font-mono); font-size: 0.75rem;
+    color: var(--text-dim); letter-spacing: 0.1em;
+    margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+  }
+  .progress-label::before { content: '>'; color: var(--accent); font-weight: bold; }
+  .progress-outer { display: flex; align-items: center; gap: 12px; }
+  .progress-track {
+    flex: 1; height: 8px; background: #0a101a;
+    border-radius: 4px; border: 1px solid var(--border);
+    overflow: hidden; box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+  }
+  .progress-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    border-radius: 3px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 10px rgba(0,210,170,0.4);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; top: 0; right: 0;
+    width: 16px; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2));
+  }
+  .progress-text {
+    font-family: var(--font-mono); font-size: 0.8rem;
+    color: var(--accent); min-width: 38px; text-align: right;
+    font-weight: 600; letter-spacing: 0.05em;
+  }
+
+  .toast {
+    position: fixed; top: 20px; left: 50%;
+    transform: translateX(-50%) translateY(-120px);
+    background: #0a2015; border: 1px solid var(--success);
+    color: var(--success); padding: 10px 24px; border-radius: 6px;
+    font-family: var(--font-mono); font-size: 0.9rem;
+    letter-spacing: 0.08em; z-index: 10000;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 0 30px rgba(0,230,118,0.3);
+    text-align: center; pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.warn { background: #1a0f0f; border-color: var(--danger); color: var(--danger); box-shadow: 0 0 30px rgba(224,85,106,0.3); }
+
+  /* ======================================================================
+     GAME 1: Morse Code
+     ====================================================================== */
+  .game-container { display: none; flex-direction: column; height: 100%; }
+  .game-container.active { display: flex; }
+
+  .g1-header { text-align: center; margin-bottom: 20px; }
+  .g1-header h1 {
+    font-size: clamp(0.95rem, 2.5vw, 1.25rem); font-weight: 700;
+    letter-spacing: 0.08em; color: var(--text-bright);
+    text-shadow: 0 0 18px rgba(0,210,170,0.3);
+  }
+  .g1-header h1 .dot {
+    display: inline-block; width: 5px; height: 5px; background: var(--accent);
+    border-radius: 50%; margin: 0 3px 2px;
+    animation: dotPulse 1.6s ease-in-out infinite;
+  }
+  .g1-header h1 .dot:nth-child(2) { animation-delay: 0.4s; }
+  .g1-header h1 .dot:nth-child(3) { animation-delay: 0.8s; }
+  @keyframes dotPulse {
+    0%,100%{opacity:.3;box-shadow:0 0 2px var(--accent)}
+    50%{opacity:1;box-shadow:0 0 10px var(--accent),0 0 20px var(--accent)}
+  }
+
+  .g1-body { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1; }
+
+  .morse-display { display: flex; gap: 10px; margin-bottom: 22px; }
+  .morse-box {
+    flex: 1; aspect-ratio: 1.55/1;
+    background: #0a1018; border: 2px solid var(--border); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: clamp(0.85rem, 1.8vw, 1.05rem);
+    font-weight: bold; letter-spacing: 0.14em;
+    color: var(--morse-glow); text-shadow: 0 0 12px rgba(77,208,225,0.5);
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
+    position: relative; transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .morse-box.solved { border-color: var(--success); box-shadow: 0 0 14px rgba(0,230,118,0.2), inset 0 0 20px rgba(0,0,0,0.4); }
+  .morse-box .idx { position: absolute; top: 3px; left: 7px; font-size: 0.55rem; color: var(--text-dim); font-family: var(--font-mono); }
+
+  .input-display { display: flex; gap: 10px; margin-bottom: 22px; }
+  .input-box {
+    flex: 1; aspect-ratio: 1.55/1;
+    background: #0d1520; border: 2px solid var(--border-glow); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    font-weight: bold; color: var(--accent);
+    text-shadow: 0 0 14px rgba(0,210,170,0.5);
+    box-shadow: 0 0 12px rgba(26,107,138,0.18), inset 0 0 20px rgba(0,0,0,0.4);
+    transition: all 0.25s ease; cursor: default;
+  }
+  .input-box.active { border-color: var(--accent); box-shadow: 0 0 18px rgba(0,210,170,0.3), inset 0 0 22px rgba(0,0,0,0.4); animation: inputPulse 2s ease-in-out infinite; }
+  .input-box.correct { border-color: var(--success); color: var(--success); text-shadow: 0 0 14px rgba(0,230,118,0.6); box-shadow: 0 0 18px rgba(0,230,118,0.2), inset 0 0 22px rgba(0,0,0,0.4); animation: none; }
+  .input-box.shake { animation: shake 0.45s ease; }
+
+  @keyframes inputPulse { 0%,100%{border-color:var(--accent)} 50%{border-color:rgba(0,210,170,.4)} }
+  @keyframes shake {
+    0%,100%{transform:translateX(0)} 15%{transform:translateX(-5px)} 30%{transform:translateX(5px)}
+    45%{transform:translateX(-4px)} 60%{transform:translateX(4px)} 75%{transform:translateX(-2px)} 90%{transform:translateX(2px)}
+  }
+
+  /* G1 clue grid */
+  .clue-grid { display: flex; flex-direction: column; gap: 1px; font-family: var(--font-mono); }
+  .clue-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+  .clue-cell {
+    display: flex; align-items: center; gap: 6px; padding: 5px 7px;
+    background: #0d1520; border: 1px solid transparent; border-radius: 3px;
+    transition: all 0.3s ease; font-size: 0.73rem; cursor: default;
+  }
+  .clue-cell.found { background: rgba(0,230,118,0.1); border-color: rgba(0,230,118,0.4); box-shadow: 0 0 8px rgba(0,230,118,0.12); }
+  .clue-cell .cd { width: 18px; text-align: center; font-weight: bold; color: var(--accent); flex-shrink: 0; }
+  .clue-cell.found .cd { color: var(--success); text-shadow: 0 0 6px rgba(0,230,118,0.4); }
+  .clue-cell .cm { letter-spacing: 0.07em; color: var(--text-dim); flex: 1; }
+  .clue-cell.found .cm { color: var(--success); text-shadow: 0 0 6px rgba(0,230,118,0.2); }
+  .clue-cell .cs { font-size: 0.6rem; color: var(--text-dim); flex-shrink: 0; }
+  .clue-cell.found .cs { color: var(--success); }
+
+  /* G1 numpad */
+  .numpad { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; }
+  .numpad button {
+    aspect-ratio: 1.25/1; font-family: var(--font-mono);
+    font-size: clamp(1rem, 2.2vw, 1.2rem); font-weight: 600;
+    border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+    background: linear-gradient(180deg, #1a2a3a 0%, #101c28 100%);
+    color: var(--text-bright); transition: all 0.12s ease;
+    letter-spacing: 0.05em; box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+  .numpad button:hover { border-color: var(--accent); background: linear-gradient(180deg, #1e3246 0%, #152636 100%); box-shadow: 0 0 12px rgba(0,210,170,0.2), 0 2px 6px rgba(0,0,0,0.4); transform: translateY(-1px); }
+  .numpad button:active { transform: scale(0.93); background: linear-gradient(180deg, #0c1620 0%, #080f16 100%); border-color: var(--accent); box-shadow: 0 0 6px rgba(0,210,170,0.3), inset 0 2px 4px rgba(0,0,0,0.5); transition: all 0.05s ease; }
+  .numpad button.kc { color: var(--warning); font-size: 0.78rem; }
+  .numpad button.kd { color: var(--danger); font-size: 0.82rem; }
+  .numpad button.kn { grid-column: 1/-1; aspect-ratio: auto; height: 38px; font-size: 0.75rem; letter-spacing: 0.1em; color: var(--accent); border-color: var(--border-glow); background: linear-gradient(180deg, #102432 0%, #0a1824 100%); }
+  .numpad button.kn:hover { border-color: var(--accent); box-shadow: 0 0 16px rgba(0,210,170,0.2); }
+
+  /* ======================================================================
+     GAME 2: Slot Machine — Space Lock
+     ====================================================================== */
+  .g2-header { text-align: center; margin-bottom: 10px; }
+  .g2-header .hint-text {
+    font-family: var(--font-ui); font-size: clamp(0.75rem, 1.6vw, 0.85rem);
+    color: var(--text-dim); letter-spacing: 0.04em; margin-bottom: 8px;
+  }
+  .g2-header .hint-text .key-badge {
+    display: inline-block; background: #1a2a3a; border: 1px solid var(--accent);
+    color: var(--accent); padding: 2px 10px; border-radius: 3px;
+    font-family: var(--font-mono); font-weight: bold; margin: 0 3px;
+    box-shadow: 0 0 8px rgba(0,210,170,0.2);
+  }
+  .g2-top-bar {
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    flex-wrap: wrap;
+  }
+  /* Difficulty selector */
+  .diff-selector {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim);
+  }
+  .diff-btn {
+    padding: 3px 10px; font-family: var(--font-mono); font-size: 0.68rem;
+    border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
+    background: transparent; color: var(--text-dim);
+    transition: all 0.2s ease; letter-spacing: 0.04em;
+  }
+  .diff-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .diff-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,210,170,0.1); box-shadow: 0 0 8px rgba(0,210,170,0.15); }
+  /* Timer */
+  .timer {
+    font-family: var(--font-mono); font-size: 0.82rem;
+    color: var(--accent); letter-spacing: 0.06em;
+    min-width: 64px; text-align: center;
+  }
+  .timer .timer-val { font-weight: bold; }
+
+  .g2-body { display: grid; grid-template-columns: 1fr 190px; gap: 20px; flex: 1; align-items: start; }
+
+  /* Slot machine grid */
+  .slot-wrapper { position: relative; }
+  .slot-grid {
+    display: flex; gap: 4px;
+    width: 100%; max-width: 420px; margin: 0 auto;
+    position: relative;
+  }
+  .slot-col {
+    flex: 1; height: 240px; /* 5 rows × 48px */
+    background: #080e16; border: 1px solid #111c2a;
+    border-radius: 4px; overflow: hidden;
+    position: relative; transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .slot-col.current {
+    border-color: var(--accent);
+    box-shadow: 0 0 14px rgba(0,210,170,0.25), inset 0 0 12px rgba(0,210,170,0.04);
+  }
+  .slot-col.locked {
+    border-color: var(--success);
+    box-shadow: 0 0 10px rgba(0,230,118,0.2);
+    background: #0a1410;
+  }
+  .slot-col-inner {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; flex-direction: column;
+    will-change: transform;
+  }
+  .slot-cell {
+    height: 48px; display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 1.15rem; font-weight: 600;
+    color: rgba(140,160,190,0.55);
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    transition: color 0.15s ease;
+  }
+  .slot-cell.target {
+    color: #00ff88 !important;
+    text-shadow: 0 0 18px rgba(0,255,136,0.7), 0 0 36px rgba(0,255,136,0.3);
+  }
+
+  /* Column indicator number */
+  .col-indicator {
+    position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+    font-family: var(--font-mono); font-size: 0.6rem; color: var(--text-dim);
+    letter-spacing: 0.06em; pointer-events: none;
+  }
+  .slot-col.current .col-indicator { color: var(--accent); }
+  .slot-col.locked .col-indicator { color: var(--success); }
+
+  /* Scan line overlay */
+  .scan-line {
+    position: absolute; left: 0; right: 0;
+    top: 50%; transform: translateY(-50%);
+    height: 20px;
+    background: rgba(0,210,170,0.10);
+    border-top: 1px solid rgba(0,210,170,0.55);
+    border-bottom: 1px solid rgba(0,210,170,0.55);
+    pointer-events: none; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 4px;
+  }
+  .scan-line .bracket {
+    color: rgba(200,220,240,0.7);
+    font-family: var(--font-mono); font-size: 1.2rem; font-weight: bold;
+    text-shadow: 0 0 8px rgba(200,220,240,0.4);
+  }
+  .scan-line::before {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 50%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0,210,170,0.5), transparent);
+  }
+
+  /* Radar panel */
+  .radar-panel {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .radar-ring {
+    width: 140px; height: 140px; border-radius: 50%;
+    border: 2px solid rgba(0,220,130,0.35);
+    position: relative;
+    box-shadow: 0 0 24px rgba(0,220,130,0.12), inset 0 0 24px rgba(0,220,130,0.05);
+    display: flex; align-items: center; justify-content: center;
+    transition: box-shadow 0.3s ease;
+  }
+  .radar-ring.flash {
+    box-shadow: 0 0 40px rgba(0,255,136,0.5), 0 0 80px rgba(0,255,136,0.2), inset 0 0 30px rgba(0,255,136,0.15);
+  }
+  .radar-ring::before {
+    content: ''; position: absolute;
+    width: 92px; height: 92px; border-radius: 50%;
+    border: 1px solid rgba(0,220,130,0.2);
+  }
+  .radar-ring::after {
+    content: ''; position: absolute;
+    width: 46px; height: 46px; border-radius: 50%;
+    border: 1px solid rgba(0,220,130,0.15);
+  }
+  .radar-sweep {
+    position: absolute; top: 50%; left: 50%;
+    width: 50%; height: 1px;
+    background: linear-gradient(90deg, rgba(0,255,136,0.4), transparent);
+    transform-origin: left center;
+    animation: radarSweep 3s linear infinite;
+    box-shadow: 0 0 6px rgba(0,255,136,0.2);
+  }
+  @keyframes radarSweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .radar-center {
+    position: relative; z-index: 1;
+    font-family: var(--font-mono); font-size: 0.72rem;
+    color: rgba(0,220,130,0.6); text-align: center;
+    letter-spacing: 0.06em; line-height: 1.4;
+  }
+  .radar-center .locked-char {
+    display: block; font-size: 1.5rem; font-weight: bold;
+    color: var(--success);
+    text-shadow: 0 0 18px rgba(0,255,136,0.6);
+    min-height: 28px;
+  }
+  .radar-label {
+    font-family: var(--font-mono); font-size: 0.65rem;
+    color: var(--text-dim); letter-spacing: 0.1em;
+    text-align: center;
+  }
+  .radar-locks {
+    display: flex; gap: 5px; margin-top: 2px;
+  }
+  .radar-lock-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #1a2a3a; border: 1px solid var(--border);
+    transition: all 0.3s ease;
+  }
+  .radar-lock-dot.filled { background: var(--success); border-color: var(--success); box-shadow: 0 0 8px rgba(0,230,118,0.5); }
+
+  /* G2 block progress */
+  .block-progress { display: flex; align-items: center; gap: 3px; }
+  .block-seg {
+    width: 100%; height: 8px; background: #0d1520;
+    border: 1px solid var(--border); border-radius: 2px;
+    transition: all 0.3s ease;
+  }
+  .block-seg.done { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 6px rgba(0,210,170,0.4); }
+
+  /* ======================================================================
+     G2: Shake & red flash overlay
+     ====================================================================== */
+  .g2-shake { animation: g2shake 0.4s ease; }
+  @keyframes g2shake {
+    0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)}
+    60%{transform:translateX(-5px)} 80%{transform:translateX(5px)}
+  }
+  .red-flash {
+    position: absolute; inset: 0; pointer-events: none; z-index: 10;
+    background: rgba(255,0,0,0.08);
+    border-radius: 4px; opacity: 0; transition: opacity 0.15s ease;
+  }
+  .red-flash.on { opacity: 1; }
+
+  /* ======================================================================
+     RESPONSIVE
+     ====================================================================== */
+  @media (max-width: 780px) {
+    .app-shell { flex-direction: column; }
+    .sidebar {
+      width: 100%; height: 44px; flex-direction: row;
+      border-radius: 8px 8px 0 0; border-right: 1px solid var(--border);
+      border-bottom: none; padding: 0 12px; gap: 8px; justify-content: center; align-items: center;
+    }
+    .sidebar::after { display: none; }
+    .sidebar-label { writing-mode: horizontal-tb; margin: 0; font-size: 0.6rem; }
+    .sidebar-tab { width: 44px; height: 30px; font-size: 0.7rem; }
+    .sidebar-divider { width: 1px; height: 18px; margin: 0; }
+    .main-panel { border-radius: 0 0 8px 8px; padding: 16px 14px 14px; }
+
+    .g1-body { grid-template-columns: 1fr; gap: 16px; }
+    .g2-body { grid-template-columns: 1fr; gap: 16px; }
+    .radar-panel { flex-direction: row; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .radar-ring { width: 100px; height: 100px; }
+    .radar-ring::before { width: 66px; height: 66px; }
+    .radar-ring::after { width: 34px; height: 34px; }
+    .g2-top-bar { gap: 10px; }
+    .diff-btn { padding: 2px 7px; font-size: 0.62rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==========================================================================
+     APP SHELL
+     ========================================================================== -->
+<div class="app-shell" id="appShell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <span class="sidebar-label">训练</span>
+    <button class="sidebar-tab active" data-game="1" title="摩斯密码破译">摩斯</button>
+    <div class="sidebar-divider"></div>
+    <button class="sidebar-tab" data-game="2" title="按空格锁定密码">锁定</button>
+  </nav>
+
+  <!-- MAIN PANEL -->
+  <div class="main-panel">
+
+    <!-- ================================================================
+         GAME 1: Morse Code
+         ================================================================ -->
+    <div class="game-container active" id="game1">
+      <div class="g1-header">
+        <h1>请找到摩斯密码对应的数字<span class="dot"></span><span class="dot"></span><span class="dot"></span></h1>
+        <div class="timer" style="margin-top:4px;">⏱ <span class="timer-val" id="g1TimerVal">00:00.0</span></div>
+      </div>
+      <div class="g1-body">
+        <div class="left-col">
+          <div class="section-label">已获取的密码<span class="blink"></span></div>
+          <div class="morse-display" id="morseDisplay">
+            <div class="morse-box" data-pos="0"><span class="idx">01</span></div>
+            <div class="morse-box" data-pos="1"><span class="idx">02</span></div>
+            <div class="morse-box" data-pos="2"><span class="idx">03</span></div>
+          </div>
+          <div class="section-label">密码破译线索<span class="blink"></span></div>
+          <div class="clue-grid" id="clueGrid"></div>
+        </div>
+        <div class="right-col">
+          <div class="section-label">请输入密码<span class="blink"></span></div>
+          <div class="input-display" id="inputDisplay">
+            <div class="input-box active" data-pos="0"></div>
+            <div class="input-box" data-pos="1"></div>
+            <div class="input-box" data-pos="2"></div>
+          </div>
+          <div class="numpad" id="numpad">
+            <button data-key="1">1</button>
+            <button data-key="2">2</button>
+            <button data-key="3">3</button>
+            <button data-key="4">4</button>
+            <button data-key="5">5</button>
+            <button data-key="6">6</button>
+            <button data-key="7">7</button>
+            <button data-key="8">8</button>
+            <button data-key="9">9</button>
+            <button data-key="clear" class="kc">CLR</button>
+            <button data-key="0">0</button>
+            <button data-key="del" class="kd">DEL</button>
+            <button data-key="new" class="kn">⟳ 生成新密码</button>
+          </div>
+        </div>
+      </div>
+      <div class="progress-section">
+        <div class="progress-label">自动解锁同步进行中<span class="blink"></span></div>
+        <div class="progress-outer">
+          <div class="progress-track">
+            <div class="progress-fill" id="g1ProgressFill"></div>
+          </div>
+          <span class="progress-text" id="g1ProgressText">0%</span>
+        </div>
+      </div>
+    </div><!-- /game1 -->
+
+    <!-- ================================================================
+         GAME 2: Slot Machine — Space Lock
+         ================================================================ -->
+    <div class="game-container" id="game2">
+      <div class="g2-header">
+        <p class="hint-text">
+          破解方法：逐列锁定 —— 当当前列的<span style="color:#00ff88;">绿色密码</span>到达中央扫描带时，按 <span class="key-badge">SPACE</span> 锁定
+        </p>
+        <div class="g2-top-bar">
+          <div class="diff-selector">
+            难度
+            <button class="diff-btn active" data-diff="0">普通</button>
+            <button class="diff-btn" data-diff="1">困难</button>
+            <button class="diff-btn" data-diff="2">极限</button>
+            <button class="diff-btn" data-diff="3">挑战</button>
+          </div>
+          <div class="timer">⏱ <span class="timer-val" id="timerVal">00:00.0</span></div>
+        </div>
+      </div>
+      <div class="g2-body">
+        <!-- Slot grid + scan line -->
+        <div class="slot-wrapper" id="slotWrapper">
+          <div class="red-flash" id="redFlash"></div>
+          <div class="slot-grid" id="slotGrid"></div>
+          <div class="scan-line">
+            <span class="bracket">[</span><span class="bracket">]</span>
+          </div>
+        </div>
+
+        <!-- Radar panel -->
+        <div class="radar-panel">
+          <div class="radar-ring" id="radarRing">
+            <div class="radar-sweep"></div>
+            <div class="radar-center">
+              当前目标
+              <span class="locked-char" id="lockedChar">第1列</span>
+            </div>
+          </div>
+          <div class="radar-label">锁定进度 (0/5)</div>
+          <div class="radar-locks" id="radarLocks">
+            <div class="radar-lock-dot"></div>
+            <div class="radar-lock-dot"></div>
+            <div class="radar-lock-dot"></div>
+            <div class="radar-lock-dot"></div>
+            <div class="radar-lock-dot"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="progress-section">
+        <div class="progress-label">自动解锁同步进行中<span class="blink"></span></div>
+        <div class="progress-outer">
+          <div class="block-progress" id="g2BlockProgress">
+            <div class="block-seg"></div><div class="block-seg"></div>
+            <div class="block-seg"></div><div class="block-seg"></div>
+            <div class="block-seg"></div><div class="block-seg"></div>
+            <div class="block-seg"></div><div class="block-seg"></div>
+            <div class="block-seg"></div><div class="block-seg"></div>
+          </div>
+          <span class="progress-text" id="g2ProgressText">[ 0% ]</span>
+        </div>
+      </div>
+    </div><!-- /game2 -->
+
+  </div><!-- /main-panel -->
+</div><!-- /app-shell -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ==========================================================================
+     SCRIPTS
+     ========================================================================== -->
+<script>
+(function () {
+  'use strict';
+
+  /* ====================================================================
+     SHARED
+     ==================================================================== */
+  const toast = document.getElementById('toast');
+  let toastTimer;
+  function showToast(msg, duration = 2200, warn = false) {
+    clearTimeout(toastTimer);
+    toast.textContent = msg;
+    toast.className = 'toast show' + (warn ? ' warn' : '');
+    toastTimer = setTimeout(() => { toast.className = 'toast'; }, duration);
+  }
+
+  // Game 2 loop controls — populated by Game 2 IIFE
+  let g2_startLoop = null;
+  let g2_stopLoop  = null;
+
+  /* ====================================================================
+     SIDEBAR NAVIGATION
+     ==================================================================== */
+  const sidebarTabs = document.querySelectorAll('.sidebar-tab');
+  const gameContainers = document.querySelectorAll('.game-container');
+  let activeGame = '1';
+
+  sidebarTabs.forEach(tab => {
+    tab.addEventListener('click', function () {
+      const gameId = this.dataset.game;
+      if (gameId === activeGame) return;
+      switchGame(gameId);
+    });
+  });
+
+  function switchGame(gameId) {
+    // Stop Game 2 loop if leaving it
+    if (activeGame === '2' && gameId !== '2' && g2_stopLoop) {
+      g2_stopLoop();
+    }
+
+    activeGame = gameId;
+    sidebarTabs.forEach(t => t.classList.toggle('active', t.dataset.game === gameId));
+    gameContainers.forEach(g => g.classList.toggle('active', g.id === 'game' + gameId));
+
+    if (gameId === '2' && g2_startLoop) {
+      g2_startLoop();
+    }
+  }
+
+  /* ====================================================================
+     GAME 1: Morse Code (full-code validation, timer)
+     ==================================================================== */
+  (function () {
+    const MORSE = {
+      0: '-----', 1: '.----', 2: '..---', 3: '...--', 4: '....-',
+      5: '.....', 6: '-....', 7: '--...', 8: '---..', 9: '----.'
+    };
+
+    const morseBoxes   = document.querySelectorAll('#game1 .morse-box');
+    const inputBoxes   = document.querySelectorAll('#game1 .input-box');
+    const clueGrid     = document.getElementById('clueGrid');
+    const progressFill = document.getElementById('g1ProgressFill');
+    const progressText = document.getElementById('g1ProgressText');
+    const timerValEl   = document.getElementById('g1TimerVal');
+    const numpadEl     = document.getElementById('numpad');
+
+    let secret     = [];
+    let userInput  = [null, null, null];
+    let cursor     = 0;
+    let timerStart = 0;
+    let timerInterval = null;
+    let gameDone   = false;
+
+    /* ---- Timer ---- */
+    function startTimer() {
+      if (timerInterval) return;
+      timerStart = performance.now();
+      timerInterval = setInterval(updateTimer, 100);
+    }
+    function stopTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    }
+    function resetTimer() {
+      stopTimer();
+      timerStart = 0;
+      timerValEl.textContent = '00:00.0';
+    }
+    function updateTimer() {
+      const elapsed = performance.now() - timerStart;
+      const totalSec = elapsed / 1000;
+      const min = Math.floor(totalSec / 60);
+      const sec = Math.floor(totalSec % 60);
+      const dec = Math.floor((totalSec % 1) * 10);
+      timerValEl.textContent = `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}.${dec}`;
+    }
+    function getTimeString() {
+      const totalSec = (performance.now() - timerStart) / 1000;
+      const min = Math.floor(totalSec / 60);
+      const sec = Math.floor(totalSec % 60);
+      const dec = Math.floor((totalSec % 1) * 10);
+      return `${min}分${sec}.${dec}秒`;
+    }
+
+    /* ---- Clue table ---- */
+    function buildClueTable() {
+      const layout = [[0,1],[2,3],[4,5],[6,7],[8,9]];
+      let html = '';
+      for (const [a, b] of layout) {
+        html += `<div class="clue-row">
+          <div class="clue-cell" data-digit="${a}">
+            <span class="cd">${a}</span><span class="cm">${MORSE[a]}</span><span class="cs">待破译</span>
+          </div>
+          <div class="clue-cell" data-digit="${b}">
+            <span class="cd">${b}</span><span class="cm">${MORSE[b]}</span><span class="cs">待破译</span>
+          </div>
+        </div>`;
+      }
+      clueGrid.innerHTML = html;
+    }
+
+    function newSecret() {
+      secret = [Math.floor(Math.random()*10), Math.floor(Math.random()*10), Math.floor(Math.random()*10)];
+    }
+
+    function setProgress(pct) {
+      progressFill.style.width = pct + '%';
+      progressText.textContent = pct + '%';
+    }
+
+    /* ---- Reset ---- */
+    function resetGame() {
+      newSecret();
+      userInput = [null, null, null];
+      cursor    = 0;
+      gameDone  = false;
+
+      morseBoxes.forEach((box, i) => {
+        box.innerHTML = `<span class="idx">0${i+1}</span>${MORSE[secret[i]]}`;
+        box.classList.remove('solved');
+      });
+      inputBoxes.forEach((box, i) => {
+        box.textContent = '';
+        box.className = 'input-box' + (i === 0 ? ' active' : '');
+      });
+      clueGrid.querySelectorAll('.clue-cell').forEach(cell => {
+        cell.classList.remove('found');
+        cell.querySelector('.cs').textContent = '待破译';
+      });
+      setProgress(0);
+      resetTimer();
+      updateCursor();
+    }
+
+    function updateCursor() {
+      if (gameDone) return;
+      inputBoxes.forEach((box, i) => {
+        box.classList.toggle('active', i === cursor);
+      });
+    }
+
+    /* ---- Input ---- */
+    function inputDigit(digit) {
+      if (gameDone) return;
+      if (cursor >= 3) return;
+
+      // Start timer on first digit
+      if (!timerInterval) startTimer();
+
+      userInput[cursor] = digit;
+      inputBoxes[cursor].textContent = digit;
+      inputBoxes[cursor].classList.remove('shake');
+      cursor++;
+
+      if (cursor >= 3) {
+        // All 3 digits entered — validate full code
+        setTimeout(validate, 180);
+      } else {
+        updateCursor();
+      }
+    }
+
+    function removeDigit() {
+      if (gameDone) return;
+      let last = -1;
+      for (let i = 2; i >= 0; i--) {
+        if (userInput[i] !== null) { last = i; break; }
+      }
+      if (last === -1) return;
+      inputBoxes[last].classList.remove('shake');
+      userInput[last] = null;
+      inputBoxes[last].textContent = '';
+      cursor = last;
+      updateCursor();
+    }
+
+    function clearInputs() {
+      if (gameDone) return;
+      for (let i = 0; i < 3; i++) {
+        userInput[i] = null;
+        inputBoxes[i].textContent = '';
+        inputBoxes[i].classList.remove('shake');
+      }
+      cursor = 0;
+      updateCursor();
+    }
+
+    /* ---- Validate: all-or-nothing ---- */
+    function validate() {
+      // Check if ALL 3 digits match
+      const allMatch = secret.every((s, i) => userInput[i] === s);
+
+      if (allMatch) {
+        // SUCCESS — all 3 correct
+        gameDone = true;
+        stopTimer();
+        updateTimer();
+        setProgress(100);
+
+        // Mark all boxes and clue cells
+        for (let i = 0; i < 3; i++) {
+          inputBoxes[i].classList.add('correct');
+          inputBoxes[i].classList.remove('active');
+          morseBoxes[i].classList.add('solved');
+          const cell = clueGrid.querySelector(`.clue-cell[data-digit="${secret[i]}"]`);
+          if (cell) {
+            cell.classList.add('found');
+            cell.querySelector('.cs').textContent = '已破译';
+          }
+        }
+
+        const timeStr = getTimeString();
+        setTimeout(() => {
+          showToast(`🔓 破译成功！密码 ${secret.join('')} 解锁完成！耗时 ${timeStr}`, 3000);
+        }, 300);
+        setTimeout(resetGame, 3500);
+
+      } else {
+        // FAIL — clear all, shake all wrong positions
+        for (let i = 0; i < 3; i++) {
+          if (userInput[i] !== secret[i]) {
+            inputBoxes[i].classList.add('shake');
+          }
+        }
+        showToast('✗ 密码错误，请重新输入', 1600, true);
+
+        setTimeout(() => {
+          for (let i = 0; i < 3; i++) {
+            inputBoxes[i].classList.remove('shake');
+            inputBoxes[i].textContent = '';
+            userInput[i] = null;
+          }
+          cursor = 0;
+          updateCursor();
+        }, 500);
+      }
+    }
+
+    /* ---- Events ---- */
+    numpadEl.addEventListener('click', function (e) {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const key = btn.dataset.key;
+      if (key === 'clear') clearInputs();
+      else if (key === 'del') removeDigit();
+      else if (key === 'new') { resetGame(); showToast('🔄 新密码已生成', 1500); }
+      else inputDigit(parseInt(key, 10));
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (activeGame !== '1') return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key >= '0' && e.key <= '9') { e.preventDefault(); inputDigit(parseInt(e.key, 10)); }
+      else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); removeDigit(); }
+      else if (e.key === 'Escape' || e.key.toLowerCase() === 'c') { e.preventDefault(); clearInputs(); }
+    });
+
+    /* ---- Init ---- */
+    buildClueTable();
+    resetGame();
+  })();
+
+  /* ====================================================================
+     GAME 2: Slot Machine — Space Lock (5-column sequential)
+     ==================================================================== */
+  (function () {
+    /* ---- DOM refs ---- */
+    const slotGrid      = document.getElementById('slotGrid');
+    const slotWrapper   = document.getElementById('slotWrapper');
+    const redFlash      = document.getElementById('redFlash');
+    const radarRing     = document.getElementById('radarRing');
+    const lockedCharEl  = document.getElementById('lockedChar');
+    const radarLocks    = document.getElementById('radarLocks');
+    const blockProgress = document.getElementById('g2BlockProgress');
+    const progressText2 = document.getElementById('g2ProgressText');
+    const timerValEl    = document.getElementById('timerVal');
+    const diffBtns      = document.querySelectorAll('.diff-btn');
+
+    /* ---- Constants ---- */
+    const COLS      = 5;
+    const CELL_H    = 48;
+    const UNIQUE    = 6;     // unique chars per column (shorter cycle)
+    const TOTAL     = UNIQUE * 2;
+    const CYCLE_H   = UNIQUE * CELL_H;
+    const VIS_ROWS  = 5;
+
+    /* ---- Difficulty presets: [minSpeed, maxSpeed] px/s ---- */
+    const DIFF_SPEEDS = [
+      [55, 85],    // 普通
+      [85, 135],   // 困难
+      [130, 190],  // 极限
+      [180, 260],  // 挑战
+    ];
+
+    /* ---- Character pool ---- */
+    const CHAR_POOL = (function () {
+      const d = '0123456789'.split('');
+      const l = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+      const s = '@%&+^~#$!?*'.split('');
+      return [...d, ...l, ...s];
+    })();
+
+    function shuffle(arr) { const a = arr.slice(); for (let i = a.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+    function pick(arr, n) { return shuffle(arr).slice(0, n); }
+
+    /* ---- State ---- */
+    let colChars   = [];     // [col][total]
+    let colOffset  = [];     // [col] px
+    let colSpeed   = [];     // [col] px/s
+    let targetIdx  = [];     // [col] index in UNIQUE set
+    let targetChar = [];     // [col] the green character
+    let lockedCols = [];     // [col] bool
+    let currentCol = 0;      // which column to lock now
+    let difficulty = 0;      // 0=普通, 1=困难, 2=极限, 3=挑战
+    let animFrame  = null;
+    let lastTime   = 0;
+    let gameActive = false;
+    let timerStart = 0;
+    let timerElapsed = 0;
+    let timerInterval = null;
+    let gameComplete = false;
+
+    /* ---- Build slot DOM ---- */
+    function buildSlotDOM() {
+      let html = '';
+      for (let c = 0; c < COLS; c++) {
+        html += `<div class="slot-col" id="slotCol${c}">
+          <div class="col-indicator">COL ${c+1}</div>
+          <div class="slot-col-inner" id="colInner${c}"></div>
+        </div>`;
+      }
+      slotGrid.innerHTML = html;
+    }
+
+    /* ---- Populate a column ---- */
+    function populateCol(c) {
+      const chars = colChars[c];
+      const inner = document.getElementById('colInner' + c);
+      let html = '';
+      for (let i = 0; i < TOTAL; i++) {
+        const isTarget = (i === targetIdx[c] || i === targetIdx[c] + UNIQUE);
+        html += `<div class="slot-cell${isTarget ? ' target' : ''}">${chars[i]}</div>`;
+      }
+      inner.innerHTML = html;
+    }
+
+    /* ---- Refresh green markers for a column ---- */
+    function refreshTargetCol(c) {
+      const inner = document.getElementById('colInner' + c);
+      if (!inner) return;
+      const cells = inner.children;
+      for (let i = 0; i < cells.length; i++) {
+        cells[i].classList.toggle('target', i === targetIdx[c] || i === targetIdx[c] + UNIQUE);
+      }
+    }
+
+    /* ---- Generate new game ---- */
+    function generateAll() {
+      colChars  = [];
+      colOffset = [];
+      colSpeed  = [];
+      targetIdx  = [];
+      targetChar = [];
+      lockedCols = [false, false, false, false, false];
+      currentCol = 0;
+
+      const [minSpd, maxSpd] = DIFF_SPEEDS[difficulty];
+      // Rows where the green target may appear initially: 0,1,3,4 (visible, not center)
+      const startRows = [0, 1, 3, 4];
+
+      for (let c = 0; c < COLS; c++) {
+        // Generate UNIQUE random chars — one will be the green target
+        const chars = pick(CHAR_POOL, UNIQUE);
+        const tIdx = Math.floor(Math.random() * UNIQUE);
+        chars[tIdx] = CHAR_POOL[Math.floor(Math.random() * CHAR_POOL.length)];
+
+        // Compute offset so the green target appears at a visible start row
+        const startRow = startRows[Math.floor(Math.random() * startRows.length)];
+        // We want: tIdx*CELL_H - off = startRow*CELL_H  →  off = (tIdx - startRow)*CELL_H
+        let off = (tIdx - startRow) * CELL_H;
+        if (off < 0) off += CYCLE_H;
+
+        targetIdx.push(tIdx);
+        targetChar.push(chars[tIdx]);
+        colChars.push([...chars, ...chars]);
+        colOffset.push(off);
+        const spd = minSpd + Math.random() * (maxSpd - minSpd);
+        colSpeed.push(spd);
+      }
+    }
+
+    /* ---- Render scroll positions ---- */
+    function renderPositions() {
+      for (let c = 0; c < COLS; c++) {
+        const inner = document.getElementById('colInner' + c);
+        if (!inner) continue;
+        let off = colOffset[c] % CYCLE_H;
+        if (off < 0) off += CYCLE_H;
+        inner.style.transform = `translateY(${-off}px)`;
+      }
+    }
+
+    /* ---- Update column visual states ---- */
+    function updateColStates() {
+      for (let c = 0; c < COLS; c++) {
+        const colEl = document.getElementById('slotCol' + c);
+        if (!colEl) continue;
+        colEl.classList.remove('current', 'locked');
+        if (lockedCols[c]) {
+          colEl.classList.add('locked');
+        } else if (c === currentCol) {
+          colEl.classList.add('current');
+        }
+      }
+    }
+
+    /* ---- Check if column c's green target is in center zone ---- */
+    const ZONE_H = 20; // narrow lock zone (matches CSS scan-line)
+    function isTargetInCenter(c) {
+      const off = colOffset[c] % CYCLE_H;
+      const normOff = off < 0 ? off + CYCLE_H : off;
+
+      const pos1 = targetIdx[c] * CELL_H - normOff;
+      const pos2 = (targetIdx[c] + UNIQUE) * CELL_H - normOff;
+
+      // Center zone: ZONE_H px band centered in row 2 (middle of visible area)
+      const centerTop = 2.5 * CELL_H - ZONE_H / 2;
+      const centerBot = 2.5 * CELL_H + ZONE_H / 2;
+
+      function inView(pos) { return pos > -CELL_H && pos < VIS_ROWS * CELL_H; }
+      // Check cell CENTER is inside zone (not just overlap — prevents 48px cell from giving 68px hit window)
+      function centerInZone(pos) {
+        const mid = pos + CELL_H / 2;
+        return mid >= centerTop && mid < centerBot;
+      }
+
+      if (inView(pos1) && centerInZone(pos1)) return true;
+      if (inView(pos2) && centerInZone(pos2)) return true;
+      return false;
+    }
+
+    /* ---- Timer ---- */
+    function startTimer() {
+      if (timerInterval) return;
+      timerStart = performance.now() - timerElapsed;
+      timerInterval = setInterval(updateTimer, 100);
+    }
+    function stopTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      timerElapsed = performance.now() - timerStart;
+    }
+    function resetTimer() {
+      stopTimer();
+      timerElapsed = 0;
+      timerStart = 0;
+      timerValEl.textContent = '00:00.0';
+    }
+    function updateTimer() {
+      const elapsed = performance.now() - timerStart;
+      const totalSec = elapsed / 1000;
+      const min = Math.floor(totalSec / 60);
+      const sec = Math.floor(totalSec % 60);
+      const dec = Math.floor((totalSec % 1) * 10);
+      timerValEl.textContent = `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}.${dec}`;
+    }
+    function getTimeString() {
+      const totalSec = timerElapsed / 1000;
+      const min = Math.floor(totalSec / 60);
+      const sec = Math.floor(totalSec % 60);
+      const dec = Math.floor((totalSec % 1) * 10);
+      return `${min}分${sec}.${dec}秒`;
+    }
+
+    /* ---- Progress ---- */
+    function setProgress2(pct) {
+      progressText2.textContent = `[ ${pct}% ]`;
+      const segs = blockProgress.querySelectorAll('.block-seg');
+      const doneCount = Math.round((pct / 100) * segs.length);
+      segs.forEach((seg, i) => seg.classList.toggle('done', i < doneCount));
+    }
+    function updateLockDots() {
+      const dots = radarLocks.querySelectorAll('.radar-lock-dot');
+      const count = lockedCols.filter(Boolean).length;
+      dots.forEach((d, i) => d.classList.toggle('filled', i < count));
+    }
+    function updateRadarLabel() {
+      const count = lockedCols.filter(Boolean).length;
+      const label = radarLocks.previousElementSibling;
+      if (label) label.textContent = `锁定进度 (${count}/5)`;
+    }
+
+    /* ---- Handle Space (lock current column) ---- */
+    function handleSpace() {
+      if (!gameActive || gameComplete) return;
+      if (currentCol >= COLS) return;
+
+      // Start timer on first attempt
+      if (!timerInterval && !timerElapsed) startTimer();
+
+      const c = currentCol;
+
+      if (isTargetInCenter(c)) {
+        // SUCCESS — lock this column
+        lockedCols[c] = true;
+        lockedCharEl.textContent = targetChar[c];
+        lockedCharEl.style.color = 'var(--success)';
+        lockedCharEl.style.textShadow = '0 0 14px rgba(0,255,136,0.6)';
+
+        radarRing.classList.add('flash');
+        setTimeout(() => radarRing.classList.remove('flash'), 400);
+
+        updateColStates();
+        updateLockDots();
+        updateRadarLabel();
+
+        const count = lockedCols.filter(Boolean).length;
+        setProgress2(count * 20); // 20% per column
+
+        showToast(`✓ 第${c+1}列锁定成功！${targetChar[c]} 已破译 (${count}/5)`, 1600);
+
+        currentCol++;
+
+        if (currentCol >= COLS) {
+          // ALL DONE — WIN
+          gameComplete = true;
+          stopTimer();
+          timerElapsed = performance.now() - timerStart;
+          updateTimer();
+          setProgress2(100);
+          lockedCharEl.textContent = '✓';
+          updateRadarLabel();
+          const label = radarLocks.previousElementSibling;
+          if (label) label.textContent = '锁定进度 (5/5)';
+          const timeStr = getTimeString();
+          setTimeout(() => {
+            showToast(`🔓 破译成功！全部5列解锁完成！耗时 ${timeStr}`, 3500);
+          }, 400);
+          setTimeout(resetGame2, 4000);
+        } else {
+          // Move to next column
+          lockedCharEl.textContent = `第${currentCol+1}列`;
+          lockedCharEl.style.color = 'rgba(0,220,130,0.6)';
+          lockedCharEl.style.textShadow = 'none';
+          updateColStates();
+        }
+      } else {
+        // FAIL
+        slotWrapper.classList.add('g2-shake');
+        redFlash.classList.add('on');
+        showToast(`✗ 未命中！第${c+1}列的绿色密码不在扫描带内`, 1500, true);
+        setTimeout(() => {
+          slotWrapper.classList.remove('g2-shake');
+          redFlash.classList.remove('on');
+        }, 400);
+      }
+    }
+
+    /* ---- Animation loop ---- */
+    function loop(timestamp) {
+      if (!gameActive) return;
+      if (!lastTime) lastTime = timestamp;
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+      lastTime = timestamp;
+
+      for (let c = 0; c < COLS; c++) {
+        if (lockedCols[c]) continue; // stopped
+        colOffset[c] += colSpeed[c] * dt;
+        if (colOffset[c] >= CYCLE_H) colOffset[c] -= CYCLE_H;
+        if (colOffset[c] < 0) colOffset[c] += CYCLE_H;
+      }
+      renderPositions();
+
+      animFrame = requestAnimationFrame(loop);
+    }
+
+    function startGame2Loop() {
+      if (activeGame !== '2') return;
+      if (animFrame) cancelAnimationFrame(animFrame);
+      lastTime = 0;
+      gameActive = true;
+      animFrame = requestAnimationFrame(loop);
+      // Resume timer if game was in progress
+      if (timerElapsed > 0 && !gameComplete && lockedCols.filter(Boolean).length > 0) {
+        startTimer();
+      }
+    }
+
+    function stopGame2Loop() {
+      gameActive = false;
+      if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+      stopTimer();
+    }
+
+    // Expose to shared scope
+    g2_startLoop = startGame2Loop;
+    g2_stopLoop  = stopGame2Loop;
+
+    /* ---- Reset ---- */
+    function resetGame2() {
+      stopTimer();
+      resetTimer();
+      gameComplete = false;
+      generateAll();
+      for (let c = 0; c < COLS; c++) populateCol(c);
+      renderPositions();
+      updateColStates();
+      setProgress2(0);
+      updateLockDots();
+      updateRadarLabel();
+      lockedCharEl.textContent = '第1列';
+      lockedCharEl.style.color = 'rgba(0,220,130,0.6)';
+      lockedCharEl.style.textShadow = 'none';
+      startGame2Loop();
+    }
+
+    /* ---- Difficulty buttons ---- */
+    diffBtns.forEach(btn => {
+      btn.addEventListener('click', function () {
+        const d = parseInt(this.dataset.diff, 10);
+        if (d === difficulty) return;
+        difficulty = d;
+        diffBtns.forEach(b => b.classList.toggle('active', parseInt(b.dataset.diff, 10) === d));
+        // Reset game with new difficulty
+        stopTimer();
+        resetTimer();
+        gameComplete = false;
+        generateAll();
+        for (let c = 0; c < COLS; c++) populateCol(c);
+        renderPositions();
+        updateColStates();
+        setProgress2(0);
+        updateLockDots();
+        updateRadarLabel();
+        lockedCharEl.textContent = '第1列';
+        lockedCharEl.style.color = 'rgba(0,220,130,0.6)';
+        lockedCharEl.style.textShadow = 'none';
+        if (activeGame === '2') startGame2Loop();
+        showToast(`难度切换：${['普通','困难','极限','挑战'][d]}`, 1200);
+      });
+    });
+
+    /* ---- Keyboard ---- */
+    document.addEventListener('keydown', function (e) {
+      if (activeGame !== '2') return;
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        handleSpace();
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        stopGame2Loop();
+        resetGame2();
+        showToast('🔄 新密码已生成', 1500);
+      }
+    });
+
+    /* ---- Click on slot = space ---- */
+    slotWrapper.addEventListener('click', function () {
+      if (activeGame !== '2') return;
+      handleSpace();
+    });
+
+    /* ---- Init ---- */
+    buildSlotDOM();
+    generateAll();
+    for (let c = 0; c < COLS; c++) populateCol(c);
+    renderPositions();
+    updateColStates();
+    setProgress2(0);
+    updateLockDots();
+    updateRadarLabel();
+  })();
+
+  /* ====================================================================
+     INIT
+     ==================================================================== */
+  // Game 1 is active by default
+  console.log('三角洲行动 - 保险箱破译训练 已就绪');
+  console.log('侧边栏切换游戏 | Game 1: 摩斯密码 | Game 2: 空格锁定');
+})();
+</script>
+</body>
+</html>
